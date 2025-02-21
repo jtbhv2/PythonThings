@@ -1,21 +1,20 @@
 import openpyxl.styles
 import re
+import os
 import requests
 import datetime
 import pandas as pd
+import ctypes
 import openpyxl
 import win32com.client
+import tkinter as tk
+from tkinter import simpledialog
 from openpyxl import load_workbook
 from openpyxl.worksheet.page import PageMargins
 from openpyxl.utils import get_column_letter
 from openpyxl.styles import Alignment, Font, PatternFill, GradientFill, Color
 from openpyxl.formatting.rule import ColorScaleRule, FormulaRule
 from openpyxl.worksheet.table import Table, TableStyleInfo
-import pandas as pd
-import os
-import win32com.client
-import tkinter as tk
-from tkinter import filedialog, messagebox
 
 # Define the URL and parameters
 url = "https://maps.memphistn.gov/mapping/rest/services/PublicWorks/Drain_Services_PROD/FeatureServer/1/query"
@@ -26,6 +25,7 @@ params = {
 }
 
 # Fetch data from the GIS server
+
 response = requests.get(url, params=params)
 
 if response.status_code == 200:
@@ -79,8 +79,8 @@ if response.status_code == 200:
         df.sort_values(by='Map Page', ascending=True, inplace=True)
 
         # Save to Excel
-        currentDate = datetime.datetime.now().strftime('%Y-%m-%d')
-        outputPath = f"C:\\Users\\brian.stlouis\\Documents\\DrainDaily{currentDate}.xlsx"
+        currentDate = datetime.datetime.now().strftime('%Y-%m-%d__%H-%M-%S')
+        outputPath = f'DrainDaily{currentDate}.xlsx'
         df.to_excel(outputPath, index=False)
 
         # Load the workbook to apply formatting
@@ -88,6 +88,8 @@ if response.status_code == 200:
         ws = wb.active
 
         # Apply formatting##########################################################
+
+        ws.title = 'All Drain Zones'
 
         # Set the format for the header
         for cell in ws[1]:
@@ -188,174 +190,103 @@ if response.status_code == 200:
                 fill = GradientFill(stop=("FF0000", "FFFFFF"))
                 cell.fill = fill
 
-        #Let's get this thing ready to print 
-        ws.page_setup.orientation = ws.ORIENTATION_LANDSCAPE  # Landscape orientation
-        ws.page_setup.paperSize = ws.PAPERSIZE_LEGAL  # Legal paper size
-        ws.page_margins = PageMargins(left=0.25, right=0.25, top=0.25, bottom=0.25, header=0.3, footer=0.3)
-        ws.oddHeader.center.text = "&\"-,Bold\"&36&KFF0000" + "\n" + "&D"  # Date in the center header in red
-        ws.oddFooter.left.text = "&\"-,Bold\"&14&KFF0000&P"  # Page number in the left footer in red
-
         #Wrap the entire thing in a precious table
         table = Table(displayName="DataTable", ref=f"A1:{chr(65 + len(df.columns) - 1)}{len(df) + 1}")
         ws.add_table(table)
+
+        zoneColors = {
+            'A': '00FF00',
+            'B': 'FFFF00',
+            'C': '0000FF',
+            'D': 'FFA500'
+        }
+
+        #Copy the sheet, then color based on zone 
+        for i in range(4):
+            newSheet = wb.copy_worksheet(ws)
+            zone = chr(65 + i)
+            newSheet.title = f'Drain Zone {chr(65 + i)}'
+
+            header_fill = PatternFill(start_color=zoneColors[zone], end_color=zoneColors[zone], fill_type="solid")
+            for cell in newSheet[1]:  # Loop through all cells in row 1
+                cell.fill = header_fill
+
+            if zone == 'C':
+                for cell in newSheet[1]:
+                    cell.font = Font(color='FFFFFF')
+
+            # Apply conditional formatting AGAIN
+            col_b_range = f'B2:B{newSheet.max_row}'  # Adjust the range for column B
+            color_scale_rule = ColorScaleRule(
+                start_type="min", start_color="FF0000",  # Red
+                mid_type="percentile", mid_value=50, mid_color="FFFF00",  # Yellow
+                end_type="max", end_color="00FF00"  # Green
+            )
+            newSheet.conditional_formatting.add(col_b_range, color_scale_rule)
+
+            col_d_range = f'D2:D{newSheet.max_row}'
+
+            newSheet.conditional_formatting.add(
+                col_d_range, FormulaRule(formula=['ISNUMBER(SEARCH("flood",D2))'], stopIfTrue=False, fill=PatternFill(start_color="FFC7CE", end_color="FFC7CE", fill_type="solid"))
+            )
+            newSheet.conditional_formatting.add(
+                col_d_range, FormulaRule(formula=['ISNUMBER(SEARCH("prevent",D2))'], stopIfTrue=False, fill=PatternFill(start_color="FFC7CE", end_color="FFC7CE", fill_type="solid"))
+            )
+            newSheet.conditional_formatting.add(
+                col_d_range, FormulaRule(formula=['ISNUMBER(SEARCH("repair",D2))'], stopIfTrue=False, fill=PatternFill(start_color="FFEB9C", end_color="FFEB9C", fill_type="solid"))
+            )
+            newSheet.conditional_formatting.add(
+                col_d_range, FormulaRule(formula=['ISNUMBER(SEARCH("reset",D2))'], stopIfTrue=False, fill=PatternFill(start_color="FFEB9C", end_color="FFEB9C", fill_type="solid"))
+            )
+            newSheet.conditional_formatting.add(
+                col_d_range, FormulaRule(formula=['ISNUMBER(SEARCH("cavity",D2))'], stopIfTrue=False, fill=PatternFill(start_color="D6DCE4", end_color="D6DCE4", fill_type="solid"))
+            )
+
+        #Pseudo Filter zones
+        for i in range (2,6):
+            sheet = wb[f'Drain Zone {chr(65 + i - 2)}']
+            drainZone = chr(65 + i - 2)
+
+            for row in sheet.iter_rows(min_row=2, max_row=sheet.max_row, min_col=6, max_col=6):
+                if row[0].value != drainZone:
+                    sheet.row_dimensions[row[0].row].hidden = True
+
+        #Let's get this stupid thing ready to print
+        for sheet in wb.sheetnames:
+            ws = wb[sheet]
+            ws.page_setup.orientation = ws.ORIENTATION_LANDSCAPE  # Landscape orientation
+            ws.page_setup.paperSize = ws.PAPERSIZE_LEGAL  # Legal paper size
+            ws.page_margins = PageMargins(left=0.25, right=0.25, top=0.25, bottom=0.25, header=0.3, footer=0.3)
+            ws.oddFooter.right.text = "&\"-,Bold\"&14&KFF0000&D"  # Date in red
+            ws.oddFooter.left.text = "&\"-,Bold\"&14&KFF0000&P"  # Page number in the left footer in red
+
 
         # Save the workbook with formatting applied
         wb.save(outputPath)
         print(f"Data saved and formatted successfully to {outputPath}")
 
-        #Print
-        def printFile(outputPath):
-            excel = win32com.client.Dispatch('Excel.Application')
-            workbook = excel.Workbooks.Open(outputPath)
-            workbook.PrintOut()
-            workbook.Close(False)
-            excel.Quit()
-        
-        #printFile(outputPath)
+        def showPrintMessage(message, title='Print?', style=0x4):
+            return ctypes.windll.user32.MessageBoxW(0, message, title, style)
 
+        def printSheets(outputPath):
+            #response = showPrintMessage('Do you want to print the zone sheets?', 'Confirm Print', 0x4)
+            response = 6
+            if response == 6:
+                copies = 1
+                
+                excel = win32com.client.Dispatch('Excel.Application')
+                workbook = excel.Workbooks.Open(outputPath)
+
+                sheetsToPrint = [workbook.Sheets[i] for i in range(1,5)]
+
+                for sheet in sheetsToPrint:
+                    for _ in range(copies):
+                        sheet.PrintOut()
+
+                workbook.Close(False)
+                excel.Quit()
+
+        outputPath = os.path.abspath(f'DrainDaily{currentDate}.xlsx')
+        printSheets(outputPath)
     else:
         print("No features found in the dataset.")
-else:
-    print(f"Error: {response.status_code} - {response.text}")
-
-class App:
-    def __init__(self, root):
-        self.root = root
-        self.root.title("Drain Services Data Export")
-
-        # Default values
-        self.output_path = ""
-        self.selected_zones = []
-        self.print_selected = False
-        self.num_copies = 1
-
-        # Create UI elements
-        self.create_widgets()
-
-    def create_widgets(self):
-        # Label for output path
-        self.output_label = tk.Label(self.root, text="Select Output Path:")
-        self.output_label.grid(row=0, column=0, padx=10, pady=10)
-
-        # Button to select output path
-        self.select_output_button = tk.Button(self.root, text="Select Folder", command=self.select_output_path)
-        self.select_output_button.grid(row=0, column=1, padx=10, pady=10)
-
-        # Label for Drain Zone options
-        self.drain_zone_label = tk.Label(self.root, text="Select Drain Zones:")
-        self.drain_zone_label.grid(row=1, column=0, padx=10, pady=10)
-
-        # Checkboxes for A, B, C, D zones
-        self.zone_a_var = tk.BooleanVar()
-        self.zone_b_var = tk.BooleanVar()
-        self.zone_c_var = tk.BooleanVar()
-        self.zone_d_var = tk.BooleanVar()
-
-        self.zone_a_checkbox = tk.Checkbutton(self.root, text="A", variable=self.zone_a_var)
-        self.zone_a_checkbox.grid(row=1, column=1, padx=10, pady=5, sticky="w")
-
-        self.zone_b_checkbox = tk.Checkbutton(self.root, text="B", variable=self.zone_b_var)
-        self.zone_b_checkbox.grid(row=1, column=2, padx=10, pady=5, sticky="w")
-
-        self.zone_c_checkbox = tk.Checkbutton(self.root, text="C", variable=self.zone_c_var)
-        self.zone_c_checkbox.grid(row=1, column=3, padx=10, pady=5, sticky="w")
-
-        self.zone_d_checkbox = tk.Checkbutton(self.root, text="D", variable=self.zone_d_var)
-        self.zone_d_checkbox.grid(row=1, column=4, padx=10, pady=5, sticky="w")
-
-        # Print options
-        self.print_label = tk.Label(self.root, text="Print Options:")
-        self.print_label.grid(row=2, column=0, padx=10, pady=10)
-
-        self.print_var = tk.BooleanVar()
-        self.print_checkbox = tk.Checkbutton(self.root, text="Print", variable=self.print_var, command=self.toggle_print)
-        self.print_checkbox.grid(row=2, column=1, padx=10, pady=10, sticky="w")
-
-        self.print_count_label = tk.Label(self.root, text="Number of Copies:")
-        self.print_count_label.grid(row=3, column=0, padx=10, pady=5)
-
-        self.print_count_entry = tk.Entry(self.root)
-        self.print_count_entry.grid(row=3, column=1, padx=10, pady=5)
-        self.print_count_entry.insert(0, "1")  # Default to 1 copy
-
-        # Export button
-        self.export_button = tk.Button(self.root, text="Export and Print", command=self.export_data)
-        self.export_button.grid(row=4, column=0, columnspan=2, padx=10, pady=20)
-
-    def select_output_path(self):
-        self.output_path = filedialog.askdirectory(title="Select Output Folder")
-        if self.output_path:
-            messagebox.showinfo("Selected Path", f"Output will be saved to:\n{self.output_path}")
-
-    def toggle_print(self):
-        if self.print_var.get():
-            self.print_count_label.grid(row=3, column=0, padx=10, pady=5)
-            self.print_count_entry.grid(row=3, column=1, padx=10, pady=5)
-        else:
-            self.print_count_label.grid_forget()
-            self.print_count_entry.grid_forget()
-
-    def export_data(self):
-        if not self.output_path:
-            messagebox.showerror("Error", "Please select an output path.")
-            return
-
-        # Collect selected zones
-        self.selected_zones = []
-        if self.zone_a_var.get():
-            self.selected_zones.append("A")
-        if self.zone_b_var.get():
-            self.selected_zones.append("B")
-        if self.zone_c_var.get():
-            self.selected_zones.append("C")
-        if self.zone_d_var.get():
-            self.selected_zones.append("D")
-
-        if not self.selected_zones:
-            messagebox.showerror("Error", "Please select at least one Drain Zone.")
-            return
-
-        # Load the data (modify this based on your dataframe)
-        df = pd.read_excel(outputPath)
-
-        # Filter by selected zones
-        filtered_df = df[df['Drain Zone'].isin(self.selected_zones)]
-
-        # Save the filtered data
-        file_name = f"Drain_Services_Data_{datetime.today().strftime('%Y-%m-%d')}.xlsx"
-        file_path = os.path.join(self.output_path, file_name)
-        filtered_df.to_excel(file_path, index=False)
-
-        # Optionally print the file
-        if self.print_var.get():
-            try:
-                num_copies = int(self.print_count_entry.get())
-                self.print_excel_file(file_path, num_copies)
-                messagebox.showinfo("Success", f"File saved and sent to print.\n{num_copies} copies.")
-            except ValueError:
-                messagebox.showerror("Error", "Please enter a valid number of copies.")
-        else:
-            messagebox.showinfo("Success", f"File saved to:\n{file_path}")
-
-    def print_excel_file(self, file_path, num_copies):
-        # Open the Excel application
-        excel = win32com.client.Dispatch('Excel.Application')
-        excel.Visible = False
-
-        # Open the workbook
-        workbook = excel.Workbooks.Open(file_path)
-
-        # Print the workbook the specified number of times
-        for _ in range(num_copies):
-            workbook.PrintOut()
-
-        # Close the workbook
-        workbook.Close(False)
-
-        # Quit Excel
-        excel.Quit()
-
-if __name__ == "__main__":
-    root = tk.Tk()
-    app = App(root)
-    root.mainloop()
