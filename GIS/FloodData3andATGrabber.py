@@ -299,10 +299,11 @@ def runGISGrabber():
                     workbook = excel.Workbooks.Open(outputPath)
 
                     sheetsToPrint = [workbook.Sheets[i] for i in range(1,5)]
+                    activePrinter = excel.ActivePrinter
 
                     for sheet in sheetsToPrint:
                         for _ in range(copies):
-                            sheet.PrintOut()
+                            sheet.PrintOut(ActivePrinter = activePrinter, Copies=1, Collate=True)
 
                     workbook.Close(False)
                     excel.Quit()
@@ -525,6 +526,9 @@ def main():
 
     exportButton = tk.Button(root, text="Export to Excel", command=lambda: export_data(df1))
     exportButton.pack_forget()
+
+    versionLabel = tk.Label(root, text="Version 3.21.25")
+    versionLabel.place(x=10, y=275)
 
     root.mainloop()
 
