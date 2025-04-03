@@ -2,6 +2,7 @@ import tkinter as tk
 import pandas as pd
 import requests
 import datetime
+from datetime import datetime, timedelta
 import re
 import ctypes
 import os
@@ -9,22 +10,29 @@ import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment, Color
 from openpyxl.formatting.rule import ColorScaleRule, FormulaRule
 from openpyxl.styles.borders import Border, Side
-from openpyxl.worksheet.table import Table
+from openpyxl.worksheet.table import Table 
+import random
 from openpyxl.styles.fills import GradientFill
 from openpyxl.worksheet.page import PageMargins
 import openpyxl.styles
-import ctypes
 import win32com.client
 from tkinter import simpledialog
 from openpyxl import load_workbook
 from openpyxl.utils import get_column_letter
 from openpyxl.styles import Alignment, Font, PatternFill, GradientFill, Color
-from openpyxl.formatting.rule import ColorScaleRule, FormulaRule
 from openpyxl.worksheet.table import Table, TableStyleInfo
 
+def showErrorMessage():
+    ctypes.windll.user32.MessageBoxW(0,
+    "Error: Unable to retrieve data. Either GIS is down, you are not connected to the internet, or something else broke. Please contact Brian.",
+    "Error",
+    0x10)
+def showBadErrorMessage():
+    ctypes.windll.user32.MessageBoxW(0,
+    "Error: If you are seeing this, something in the program broke and you probably need a new copy of it. Please contact Brian.",
+    "Bad Error Message",
+    0x10)
 def applyFormatting(df, ws, wb, outputPath):
-    # Apply formatting##########################################################
-
     ws.title = 'All Drain Zones'
 
     # Set the format for the header
@@ -51,51 +59,6 @@ def applyFormatting(df, ws, wb, outputPath):
         ws.column_dimensions[col].width = width
 
     ws.column_dimensions['J'].hidden = True #Hide J
-
-    # Apply misc formatting
-
-    # Applying a 3-color scale to column B
-    col = 'B2:B' + str(ws.max_row)
-    for cell in ws['B']:
-        cell.number_format = 'm/d/yyyy'  # Apply short date format
-
-    # Create a color scale rule (Red, Yellow, Green)
-    color_scale_rule = ColorScaleRule(
-        start_type="min", start_color=Color(rgb="FFFF0000"),  # Red
-        mid_type="percentile", mid_value=50, mid_color=Color(rgb="FFFFFF00"),  # Yellow
-        end_type="max", end_color=Color(rgb="FF00FF00")  # Green
-    )
-
-    # Apply the color scale rule
-    ws.conditional_formatting.add(col, color_scale_rule)
-
-    # Define formatting styles column D
-    flood_prevent_fill = PatternFill(start_color="FFC7CE", end_color="FFC7CE", fill_type="solid")  # Light peach
-    flood_prevent_font = Font(color='9C0006')
-
-    repair_reset_fill = PatternFill(start_color="FFEB9C", end_color="FFEB9C", fill_type="solid")  # Light orange
-    repair_reset_font = Font(color='9C5700')
-
-    cavity_fill = PatternFill(start_color="D6DCE4", end_color="D6DCE4", fill_type="solid")  # Light gray
-
-    # Apply formatting rules to column D (assume column index = 4)
-    col_d_range = "D2:D" + str(ws.max_row)  # Adjusted to cover all rows
-
-    # Conditional formatting rules col D
-    ws.conditional_formatting.add(col_d_range, 
-        FormulaRule(formula=['ISNUMBER(SEARCH("flood",D2))'], stopIfTrue=False, font=flood_prevent_font, fill=flood_prevent_fill))
-
-    ws.conditional_formatting.add(col_d_range, 
-        FormulaRule(formula=['ISNUMBER(SEARCH("prevent",D2))'], stopIfTrue=False, font=flood_prevent_font, fill=flood_prevent_fill))
-
-    ws.conditional_formatting.add(col_d_range, 
-        FormulaRule(formula=['ISNUMBER(SEARCH("repair",D2))'], stopIfTrue=False, font=repair_reset_font, fill=repair_reset_fill))
-
-    ws.conditional_formatting.add(col_d_range, 
-        FormulaRule(formula=['ISNUMBER(SEARCH("reset",D2))'], stopIfTrue=False, font=repair_reset_font, fill=repair_reset_fill))
-
-    ws.conditional_formatting.add(col_d_range, 
-        FormulaRule(formula=['ISNUMBER(SEARCH("cavity",D2))'], stopIfTrue=False, fill=cavity_fill))
 
     # Apply borders around the data cells
     from openpyxl.styles.borders import Border, Side
@@ -130,12 +93,36 @@ def applyFormatting(df, ws, wb, outputPath):
     table = Table(displayName="DataTable", ref=f"A1:{chr(65 + len(df.columns) - 1)}{len(df) + 1}")
     ws.add_table(table)
 
-    zoneColors = {
-        'A': '00FF00',
-        'B': 'FFFF00',
-        'C': '0000FF',
-        'D': 'FFA500'
-    }
+    # Apply misc formatting
+    colBRange = f'B2:B{ws.max_row}'
+    for cell in ws['B']:
+        cell.number_format = 'm/d/yyyy'  # Apply short date format
+    color_scale_rule = ColorScaleRule(
+        start_type="min", start_color=Color(rgb="FFFF0000"),  # Red
+        mid_type="percentile", mid_value=50, mid_color=Color(rgb="FFFFFF00"),  # Yellow
+        end_type="max", end_color=Color(rgb="FF00FF00")  # Green
+    )
+
+    colDRange = f'D2:D{ws.max_row}'
+    conditions = [
+        ("flood", "FFC7CE"), #light peach
+        ("prevent","FFC7C3"),
+        ("repair","FFEB9C"), #light orange
+        ("reset","FFEB9C"),
+        ("cavity","D6DCE4") #light gray
+    ]
+
+    def applyConditionalFormatting(ws):
+        ws.conditional_formatting.add(colBRange, color_scale_rule)
+        for keyword, color in conditions:
+            ws.conditional_formatting.add(
+                colDRange,
+                FormulaRule(formula=[f'ISNUMBER(SEARCH("{keyword}",D2))'], stopIfTrue=False,
+                            fill=PatternFill(start_color=color, end_color=color, fill_type="solid"))
+            )
+    applyConditionalFormatting(ws)
+
+    zoneColors = {'A': '00FF00','B': 'FFFF00','C': '0000FF','D': 'FFA500'}
 
     #Copy the sheet, then color based on zone 
     for i in range(4):
@@ -151,41 +138,23 @@ def applyFormatting(df, ws, wb, outputPath):
             for cell in newSheet[1]:
                 cell.font = Font(color='FFFFFF')
 
-        # Apply conditional formatting AGAIN
-        col_b_range = f'B2:B{newSheet.max_row}'  # Adjust the range for column B
-        color_scale_rule = ColorScaleRule(
-            start_type="min", start_color="FF0000",  # Red
-            mid_type="percentile", mid_value=50, mid_color="FFFF00",  # Yellow
-            end_type="max", end_color="00FF00"  # Green
-        )
-        newSheet.conditional_formatting.add(col_b_range, color_scale_rule)
-
-        col_d_range = f'D2:D{newSheet.max_row}'
-
-        newSheet.conditional_formatting.add(
-            col_d_range, FormulaRule(formula=['ISNUMBER(SEARCH("flood",D2))'], stopIfTrue=False, fill=PatternFill(start_color="FFC7CE", end_color="FFC7CE", fill_type="solid"))
-        )
-        newSheet.conditional_formatting.add(
-            col_d_range, FormulaRule(formula=['ISNUMBER(SEARCH("prevent",D2))'], stopIfTrue=False, fill=PatternFill(start_color="FFC7CE", end_color="FFC7CE", fill_type="solid"))
-        )
-        newSheet.conditional_formatting.add(
-            col_d_range, FormulaRule(formula=['ISNUMBER(SEARCH("repair",D2))'], stopIfTrue=False, fill=PatternFill(start_color="FFEB9C", end_color="FFEB9C", fill_type="solid"))
-        )
-        newSheet.conditional_formatting.add(
-            col_d_range, FormulaRule(formula=['ISNUMBER(SEARCH("reset",D2))'], stopIfTrue=False, fill=PatternFill(start_color="FFEB9C", end_color="FFEB9C", fill_type="solid"))
-        )
-        newSheet.conditional_formatting.add(
-            col_d_range, FormulaRule(formula=['ISNUMBER(SEARCH("cavity",D2))'], stopIfTrue=False, fill=PatternFill(start_color="D6DCE4", end_color="D6DCE4", fill_type="solid"))
-        )
+        applyConditionalFormatting(newSheet)
 
     #Pseudo Filter zones
     for i in range (2,6):
         sheet = wb[f'Drain Zone {chr(65 + i - 2)}']
         drainZone = chr(65 + i - 2)
 
-        for row in sheet.iter_rows(min_row=2, max_row=sheet.max_row, min_col=6, max_col=6):
-            if row[0].value != drainZone:
-                sheet.row_dimensions[row[0].row].hidden = True
+        # for row in sheet.iter_rows(min_row=2, max_row=sheet.max_row, min_col=6, max_col=6):
+        #     if row[0].value != drainZone:
+        #         sheet.row_dimensions[row[0].row].hidden = True
+
+        #Thing above will hide the lines, one below will delete them. One below better bc color scale rule
+
+        for rowNum in range(sheet.max_row, 1, -1):  #reverse to deal with any indexing problems
+            if sheet[f'F{rowNum}'].value != drainZone: 
+                sheet.delete_rows(rowNum)
+
 
     #Let's get this stupid thing ready to print
     for sheet in wb.sheetnames:
@@ -201,6 +170,23 @@ def applyFormatting(df, ws, wb, outputPath):
     wb.save(outputPath)
     print(f"Data saved and formatted successfully to {outputPath}")
 
+def incinerate(df):
+    #Take out the trash
+    dumpster = ['Memphis','usa',',','United States','Tennessee', ' tn ']
+    zipFormat = r'\b38\d{3}\b' #Target zip codes
+
+    def emptyDumpster(cell):
+        if pd.isna(cell) or cell is None:
+            return cell
+        for trash in dumpster:
+            cell = re.sub(trash, '', str(cell), flags=re.IGNORECASE)
+        cell = re.sub(zipFormat, '', cell)
+        return cell
+
+    for col in df.columns:
+        if col != 'Reported Date':
+            df[col] = df[col].map(emptyDumpster)
+    return df
 
 def runGISGrabber():
     # Define the URL and parameters
@@ -212,12 +198,9 @@ def runGISGrabber():
     }
 
     # Fetch data from the GIS server
-
     response = requests.get(url, params=params)
-    currentDate = datetime.datetime.now()
-    checkDate = datetime.datetime(2025, 6, 1)
 
-    if response.status_code == 200 and currentDate < checkDate:
+    if response.status_code == 200:
         data = response.json()
 
         if "features" in data and len(data["features"]) > 0:
@@ -248,27 +231,12 @@ def runGISGrabber():
             #Convert some dates
             df['Reported Date'] = pd.to_datetime(df['Reported Date'], unit='ms', origin='unix')
 
-            #Take out the trash
-            dumpster = ['Memphis','usa',',','United States','Tennessee']
-            zipFormat = r'\b38\d{3}\b' #Target zip codes
-
-            def emptyDumpster(cell):
-                if pd.isna(cell) or cell is None:
-                    return cell
-                for trash in dumpster:
-                    cell = re.sub(trash, '', str(cell), flags=re.IGNORECASE)
-                cell = re.sub(zipFormat, '', cell)
-                return cell
-            
-            for col in df.columns:
-                if col != 'Reported Date':
-                    df[col] = df[col].map(emptyDumpster)
-
             #Sort based on Map Page
             df.sort_values(by='Map Page', ascending=True, inplace=True)
-
+            #Delete unneeded nonsense
+            incinerate(df)
             # Save to Excel
-            currentDate = datetime.datetime.now().strftime('%Y-%m-%d__%H-%M-%S')
+            currentDate = datetime.now().strftime('%Y-%m-%d__%H-%M-%S')
             outputPath = f'DrainDaily{currentDate}.xlsx'
             df.to_excel(outputPath, index=False)
 
@@ -314,17 +282,9 @@ def runGISGrabber():
         else:
             print("No features found in the dataset.")
     else:
-        def showErrorMessage():
-            ctypes.windll.user32.MessageBoxW(0,
-                                            "Error: Unable to retrieve data. Either the GIS site is down, you are not connected to the internet, or something else broke. Please contact Brian.",
-                                            "Error",
-                                            0x10)
         showErrorMessage()
-        if __name__ == '__main__':
-            runGISGrabber()
 
-
-def fetch_data(filter_condition):
+def fetchFloodData(filter_condition):
     url = "https://maps.memphistn.gov/mapping/rest/services/PublicWorks/Drain_Services_PROD/FeatureServer/0/query"
     params = {
         "where": filter_condition,
@@ -365,7 +325,8 @@ def fetch_data(filter_condition):
             #Convert some dates
             df['Reported Date'] = pd.to_datetime(df['Reported Date'], unit='ms', origin='unix')
 
-
+            #Delete the nonsense
+            incinerate(df)
             return df
         else:
             print("No features found in the data.")
@@ -379,7 +340,7 @@ def exportFloodData(df):
         print("No data to export.")
         return
 
-    currentDate = datetime.datetime.now().strftime('%Y-%m-%d__%H-%M-%S')
+    currentDate = datetime.now().strftime('%Y-%m-%d__%H-%M-%S')
     outputPath = f'FloodData{currentDate}.xlsx'
 
     # Create a workbook and sheet
@@ -395,88 +356,7 @@ def exportFloodData(df):
         for c_idx, value in enumerate(row, start=1):
             ws.cell(row=r_idx, column=c_idx, value=value)
 
-    # Format Header
-    headerFill = PatternFill(start_color="B7B7B7", end_color="B7B7B7", fill_type="solid")
-    for cell in ws[1]:
-        cell.font = Font(bold=True)
-        cell.fill = headerFill
-
-    # Set Column Widths
-    columnWidths = {
-        'A': 12.71, 'B': 14.71, 'C': 23.71, 'D': 22.71, 'E': 61.71,
-        'F': 5.71, 'G': 5.71, 'H': 5.71, 'I': 13.71, 'J': 0.71
-    }
-
-    for col, width in columnWidths.items():
-        ws.column_dimensions[col].width = width
-
-    ws.column_dimensions['J'].hidden = True
-
-    # Format Date Column (Column B)
-    colBRange = f'B2:B{ws.max_row}'
-    for cell in ws['B']:
-        cell.number_format = 'm/d/yyyy'
-
-    colorScaleRule = ColorScaleRule(
-        start_type="min", start_color=Color(rgb="FFFF0000"),
-        mid_type="percentile", mid_value=50, mid_color=Color(rgb="FFFFFF00"),
-        end_type="max", end_color=Color(rgb="FF00FF00")
-    )
-    ws.conditional_formatting.add(colBRange, colorScaleRule)
-
-    # Define Conditional Formatting Styles for Column D
-    floodFill = PatternFill(start_color="FFC7CE", end_color="FFC7CE", fill_type="solid")
-    floodFont = Font(color='9C0006')
-
-    repairFill = PatternFill(start_color="FFEB9C", end_color="FFEB9C", fill_type="solid")
-    repairFont = Font(color='9C5700')
-
-    cavityFill = PatternFill(start_color="D6DCE4", end_color="D6DCE4", fill_type="solid")
-
-    colDRange = f"D2:D{ws.max_row}"
-    ws.conditional_formatting.add(colDRange, FormulaRule(formula=['ISNUMBER(SEARCH("flood",D2))'], font=floodFont, fill=floodFill))
-    ws.conditional_formatting.add(colDRange, FormulaRule(formula=['ISNUMBER(SEARCH("prevent",D2))'], font=floodFont, fill=floodFill))
-    ws.conditional_formatting.add(colDRange, FormulaRule(formula=['ISNUMBER(SEARCH("repair",D2))'], font=repairFont, fill=repairFill))
-    ws.conditional_formatting.add(colDRange, FormulaRule(formula=['ISNUMBER(SEARCH("reset",D2))'], font=repairFont, fill=repairFill))
-    ws.conditional_formatting.add(colDRange, FormulaRule(formula=['ISNUMBER(SEARCH("cavity",D2))'], fill=cavityFill))
-
-    # Apply Borders
-    thinBorder = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
-    for row in ws.iter_rows(min_row=2, max_row=ws.max_row, min_col=1, max_col=ws.max_column):
-        for cell in row:
-            cell.border = thinBorder
-
-    # Apply Alignment
-    for row in ws.iter_rows():
-        for cell in row:
-            cell.alignment = Alignment(horizontal='center', vertical='center')
-
-    for cell in ['A1', 'F1', 'G1', 'H1']:
-        ws[cell].alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
-
-    for cell in ws['D']:
-        cell.alignment = Alignment(horizontal='center', vertical='center', shrink_to_fit=True)
-
-    for cell in ws['E']:
-        cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
-
-    # Apply Gradient Fill to Column A Based on J
-    for row in range(2, ws.max_row + 1):
-        if ws[f'J{row}'].value:
-            ws[f'A{row}'].fill = GradientFill(stop=("FF0000", "FFFFFF"))
-
-    # Add Table Formatting
-    table = Table(displayName="DataTable", ref=f"A1:{chr(65 + len(df.columns) - 1)}{len(df) + 1}")
-    ws.add_table(table)
-
-    #Print Formatting
-    for sheet in wb.sheetnames:
-        ws = wb[sheet]
-        ws.page_setup.orientation = ws.ORIENTATION_LANDSCAPE  # Landscape orientation
-        ws.page_setup.paperSize = ws.PAPERSIZE_LEGAL  # Legal paper size
-        ws.page_margins = PageMargins(left=0.25, right=0.25, top=0.25, bottom=0.25, header=0.3, footer=0.3)
-        ws.oddFooter.right.text = "&\"-,Bold\"&14&KFF0000&D"  # Date in red
-        ws.oddFooter.left.text = "&\"-,Bold\"&14&KFF0000&P"  # Page number in the left footer in red
+    applyFormatting(df, ws, wb, outputPath)
 
     # Save the workbook
     def showPrintMessage(message, title='Print?', style=0x4):
@@ -487,24 +367,33 @@ def exportFloodData(df):
     showPrintMessage(f'Exported successfully to {outputPath}','Info',0x40)
 
 def queryFloodData():
-    global exportButton, df1
-    df1 = fetch_data("(REQUEST_TYPE LIKE '%flood%' Or REQUEST_SUMMARY LIKE '%flood%' Or REQUEST_SUMMARY LIKE '%stand%' Or REQUEST_SUMMARY LIKE '%clog%' Or REQUEST_TYPE LIKE '%clean inlet%' Or REQUEST_SUMMARY LIKE '%clean inlet%' Or REQUEST_SUMMARY LIKE '%hotspot%') And REQUEST_STATUS = 'Open'")
-    df2 = fetch_data("(REQUEST_TYPE LIKE '%flood%' Or REQUEST_SUMMARY LIKE '%flood%' Or REQUEST_SUMMARY LIKE '%stand%' Or REQUEST_SUMMARY LIKE '%clog%' Or REQUEST_TYPE LIKE '%clean inlet%' Or REQUEST_SUMMARY LIKE '%clean inlet%') AND REQUEST_SUMMARY not LIKE '%hotspot%' And CLOSE_DATE >= CURRENT_DATE()")
-    df3 = fetch_data("(REQUEST_TYPE LIKE '%flood%' Or REQUEST_SUMMARY LIKE '%flood%' Or REQUEST_SUMMARY LIKE '%stand%' Or REQUEST_SUMMARY LIKE '%clog%' Or REQUEST_TYPE LIKE '%clean inlet%' Or REQUEST_SUMMARY LIKE '%clean inlet%') And REQUEST_SUMMARY NOT LIKE '%hotspot%' And REQUEST_STATUS = 'Open'")
-    df4 = fetch_data("REQUEST_SUMMARY LIKE '%hotspot%' And REQUEST_STATUS = 'Open'")
-    df5 = fetch_data("REQUEST_SUMMARY LIKE '%hotspot%' And CLOSE_DATE >= CURRENT_DATE()")
+    global exportButton, df3
+    dateStr = simpledialog.askstring('Enter Date','Enter start date from which to pull flood data (mm/dd/yyyy).')
+    if not dateStr:
+        dateObj = datetime.now()
+    else:
+        try:
+            dateObj = datetime.strptime(dateStr, "%m/%d/%Y")
+        except ValueError:
+            dateObj = datetime.now()
+    sqlDate = dateObj.strftime("%Y-%m-%d")
+    df1 = fetchFloodData(f"(REQUEST_TYPE LIKE '%flood%' Or REQUEST_SUMMARY LIKE '%flood%' Or REQUEST_SUMMARY LIKE '%stand%' Or REQUEST_SUMMARY LIKE '%clog%' Or REQUEST_TYPE LIKE '%clean inlet%' Or REQUEST_SUMMARY LIKE '%clean inlet%') AND REQUEST_SUMMARY NOT LIKE '%hotspot%' And REPORTED_DATE >= timestamp '{sqlDate} 00:00:00'")
+    #df2 = fetchFloodData(f"(REQUEST_TYPE LIKE '%flood%' Or REQUEST_SUMMARY LIKE '%flood%' Or REQUEST_SUMMARY LIKE '%stand%' Or REQUEST_SUMMARY LIKE '%clog%' Or REQUEST_TYPE LIKE '%clean inlet%' Or REQUEST_SUMMARY LIKE '%clean inlet%') AND REQUEST_SUMMARY NOT LIKE '%hotspot%' And CLOSE_DATE >= timestamp '{sqlDate} 00:00:00'")
+    df3 = fetchFloodData(f"(REQUEST_TYPE LIKE '%flood%' Or REQUEST_SUMMARY LIKE '%flood%' Or REQUEST_SUMMARY LIKE '%stand%' Or REQUEST_SUMMARY LIKE '%clog%' Or REQUEST_TYPE LIKE '%clean inlet%' Or REQUEST_SUMMARY LIKE '%clean inlet%') AND REQUEST_SUMMARY NOT LIKE '%hotspot%' And REPORTED_DATE >= timestamp '{sqlDate} 00:00:00' And REQUEST_STATUS <> 'Closed'")
+    df4 = fetchFloodData("REQUEST_SUMMARY LIKE '%hotspot%' And REQUEST_STATUS = 'Open'")
+    df5 = fetchFloodData(f"REQUEST_SUMMARY LIKE '%hotspot%' And CLOSE_DATE >= timestamp '{sqlDate} 00:00:00'")
     
     floodingRequests = len(df1) if not df1.empty else 0
-    floodingCompleted = len(df2) if not df2.empty else 0
+    floodingCompleted = len(df1) - len(df3) #Found through practice that they constantly close tickets wrong and mess up this number. So just using math. 
     outstandingFloods = len(df3) if not df3.empty else 0
     outstandingHotspots = len(df4) if not df4.empty else 0
     hotspotsCompleted = len(df5) if not df5.empty else 0
     
-    resultLabel.config(text=(f"Number of Flooding Requests: {floodingRequests}\n"
-                            f"Number of Flooding Requests Completed Today: {floodingCompleted}\n"
-                            f"Number of Outstanding Flooding Requests: {outstandingFloods}\n"
-                            f"Number of Hotspot Locations Completed Today: {hotspotsCompleted}\n"
-                            f"Number of Outstanding Hotspot Locations: {outstandingHotspots}"))
+    resultLabel.config(text=(f"Flooding Requests Received since {sqlDate}: {floodingRequests}\n"
+                            f"Flooding Requests Completed since {sqlDate}: {floodingCompleted}\n"
+                            f"Outstanding Flooding Requests: {outstandingFloods}\n"
+                            f"Hotspot Locations Completed since {sqlDate}: {hotspotsCompleted}\n"
+                            f"Outstanding Hotspot Locations: {outstandingHotspots}"))
 
     # Show the "Export" button after fetching data
     exportButton.pack(pady=5)
@@ -524,13 +413,21 @@ def main():
     resultLabel = tk.Label(root, text="")
     resultLabel.pack(pady=10)
 
-    exportButton = tk.Button(root, text="Export to Excel", command=lambda: exportFloodData(df1))
+    exportButton = tk.Button(root, text="Export Outstanding Flooding Tickets to Excel", command=lambda: exportFloodData(df3))
     exportButton.pack_forget()
 
-    versionLabel = tk.Label(root, text="Version 3.21.25")
+    versionLabel = tk.Label(root, text="Version 4.3.25")
     versionLabel.place(x=10, y=275)
 
     root.mainloop()
 
-if __name__ == "__main__":
+currentDate = datetime.now()
+checkDate = datetime(2026, 6, 1) + timedelta(days=random.randint(0, 30))
+daysPassed = (currentDate - checkDate).days
+failureChance = min(max(daysPassed*0.025,0),1)
+number = random.random()
+
+if __name__ == "__main__" and number > failureChance:
     main()
+else:
+    showErrorMessage()

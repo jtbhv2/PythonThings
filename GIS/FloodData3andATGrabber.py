@@ -39,8 +39,8 @@ def runGISGrabber():
     # Fetch data from the GIS server
 
     response = requests.get(url, params=params)
-    currentDate = datetime.datetime.now()
-    checkDate = datetime.datetime(2025, 6, 1)
+    currentDate = datetime.now()
+    checkDate = datetime(2025, 6, 1)
 
     if response.status_code == 200 and currentDate < checkDate:
         data = response.json()
@@ -93,7 +93,7 @@ def runGISGrabber():
             df.sort_values(by='Map Page', ascending=True, inplace=True)
 
             # Save to Excel
-            currentDate = datetime.datetime.now().strftime('%Y-%m-%d__%H-%M-%S')
+            currentDate = datetime.now().strftime('%Y-%m-%d__%H-%M-%S')
             outputPath = f'DrainDaily{currentDate}.xlsx'
             df.to_excel(outputPath, index=False)
 
@@ -541,6 +541,7 @@ def main():
     versionLabel.place(x=10, y=275)
 
     root.mainloop()
+
 
 if __name__ == "__main__":
     main()
