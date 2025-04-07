@@ -2,36 +2,29 @@ import tkinter as tk
 import pandas as pd
 import requests
 import datetime
-from datetime import datetime, timedelta
+from datetime import datetime
 import re
 import ctypes
 import os
 import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment, Color
 from openpyxl.formatting.rule import ColorScaleRule, FormulaRule
-from openpyxl.styles.borders import Border, Side
 from openpyxl.worksheet.table import Table 
-import random
 from openpyxl.styles.fills import GradientFill
 from openpyxl.worksheet.page import PageMargins
 import openpyxl.styles
 import win32com.client
 from tkinter import simpledialog
 from openpyxl import load_workbook
-from openpyxl.utils import get_column_letter
 from openpyxl.styles import Alignment, Font, PatternFill, GradientFill, Color
-from openpyxl.worksheet.table import Table, TableStyleInfo
+from openpyxl.worksheet.table import Table
 
 def showErrorMessage():
     ctypes.windll.user32.MessageBoxW(0,
     "Error: Unable to retrieve data. Either GIS is down, you are not connected to the internet, or something else broke. Please contact Brian.",
     "Error",
     0x10)
-def showBadErrorMessage():
-    ctypes.windll.user32.MessageBoxW(0,
-    "Error: If you are seeing this, something in the program broke and you probably need a new copy of it. Please contact Brian.",
-    "Bad Error Message",
-    0x10)
+
 def applyFormatting(df, ws, wb, outputPath):
     ws.title = 'All Drain Zones'
 
@@ -75,6 +68,9 @@ def applyFormatting(df, ws, wb, outputPath):
 
     for cell in ['A1','F1', 'G1', 'H1']:
         ws[cell].alignment = Alignment(horizontal='center', vertical='center',wrap_text=True)
+
+    for cell in ws['C']:
+        cell.alignment = Alignment(horizontal='center', vertical='center',shrink_to_fit=True)
 
     for cell in ws['D']:
         cell.alignment = Alignment(horizontal='center', vertical='center',shrink_to_fit=True)
@@ -291,49 +287,55 @@ def fetchFloodData(filter_condition):
         "outFields": "*",
         "f": "json"
     }
-    try:
-        response = requests.get(url, params=params)
-        response.raise_for_status()
-        data = response.json()
+    response = requests.get(url, params=params)
+    if response.status_code == 200:
+        try:
+            response = requests.get(url, params=params)
+            response.raise_for_status()
+            data = response.json()
 
-        # Check if "features" exist and have data
-        if "features" in data and len(data["features"]) > 0:
-            # Convert the feature data into a DataFrame
-            df = pd.json_normalize(data["features"])
+            # Check if "features" exist and have data
+            if "features" in data and len(data["features"]) > 0:
+                # Convert the feature data into a DataFrame
+                df = pd.json_normalize(data["features"])
 
-            # Define a manual mapping of old column names to aliases
-            columnMapping = {
-                'attributes.INCIDENT_NUMBER': 'Service Request Number',
-                'attributes.REPORTED_DATE': 'Reported Date',
-                'attributes.ADDRESS1': 'Location',
-                'attributes.REQUEST_TYPE':'Service Request Type ID',
-                'attributes.REQUEST_SUMMARY':'Service Request Summary',
-                'attributes.Drain_Zone':'Drain Zone',
-                'attributes.MAP_PG':'Map Page',
-                'attributes.MAP_BLK':'Map Block',
-                'attributes.ASSIGNED_TO':'Assigned To',
-                'attributes.SCF_URL':'SeeClickFix URL'
-            }
+                # Define a manual mapping of old column names to aliases
+                columnMapping = {
+                    'attributes.INCIDENT_NUMBER': 'Service Request Number',
+                    'attributes.REPORTED_DATE': 'Reported Date',
+                    'attributes.ADDRESS1': 'Location',
+                    'attributes.REQUEST_TYPE':'Service Request Type ID',
+                    'attributes.REQUEST_SUMMARY':'Service Request Summary',
+                    'attributes.Drain_Zone':'Drain Zone',
+                    'attributes.MAP_PG':'Map Page',
+                    'attributes.MAP_BLK':'Map Block',
+                    'attributes.ASSIGNED_TO':'Assigned To',
+                    'attributes.SCF_URL':'SeeClickFix URL'
+                }
 
-            # Rename the columns based on the manual mapping
-            df.rename(columns=columnMapping, inplace=True)
+                # Rename the columns based on the manual mapping
+                df.rename(columns=columnMapping, inplace=True)
 
-            # Keep only the needed columns
-            columnsToKeep = list(columnMapping.values())
-            df = df[columnsToKeep]
+                # Keep only the needed columns
+                columnsToKeep = list(columnMapping.values())
+                df = df[columnsToKeep]
 
-            #Convert some dates
-            df['Reported Date'] = pd.to_datetime(df['Reported Date'], unit='ms', origin='unix')
+                #Convert some dates
+                df['Reported Date'] = pd.to_datetime(df['Reported Date'], unit='ms', origin='unix')
+                #Sort by map page
+                df.sort_values(by='Map Page', ascending=True, inplace=True)
 
-            #Delete the nonsense
-            incinerate(df)
-            return df
-        else:
-            print("No features found in the data.")
+                #Delete the nonsense
+                incinerate(df)
+                return df
+            else:
+                print("No features found in the data.")
+                return pd.DataFrame()
+        except requests.exceptions.RequestException as e:
+            print(f"Request failed: {e}")
             return pd.DataFrame()
-    except requests.exceptions.RequestException as e:
-        print(f"Request failed: {e}")
-        return pd.DataFrame()
+    else:
+        showErrorMessage()
 
 def exportFloodData(df):
     if df.empty:
@@ -416,18 +418,16 @@ def main():
     exportButton = tk.Button(root, text="Export Outstanding Flooding Tickets to Excel", command=lambda: exportFloodData(df3))
     exportButton.pack_forget()
 
-    versionLabel = tk.Label(root, text="Version 4.3.25")
+    versionLabel = tk.Label(root, text="Version 4.7.25")
     versionLabel.place(x=10, y=275)
 
     root.mainloop()
 
 currentDate = datetime.now()
-checkDate = datetime(2026, 6, 1) + timedelta(days=random.randint(0, 30))
-daysPassed = (currentDate - checkDate).days
-failureChance = min(max(daysPassed*0.025,0),1)
-number = random.random()
+checkDate = datetime(2026, 6, 1)
+#Forcing myself to look through this every now and then 
 
-if __name__ == "__main__" and number > failureChance:
+if __name__ == "__main__" and checkDate > currentDate:
     main()
 else:
     showErrorMessage()
