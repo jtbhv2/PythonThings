@@ -184,6 +184,102 @@ def incinerate(df):
             df[col] = df[col].map(emptyDumpster)
     return df
 
+def runGISGrabber():
+    # Define the URL and parameters
+    url = "https://maps.memphistn.gov/mapping/rest/services/PublicWorks/Drain_Services_PROD/FeatureServer/1/query"
+    params = {
+        "where": "1=1",
+        "outFields": "*",
+        "f": "json"
+    }
+
+    # Fetch data from the GIS server
+    response = requests.get(url, params=params)
+
+    if response.status_code == 200:
+        data = response.json()
+
+        if "features" in data and len(data["features"]) > 0:
+            # Convert the feature data into a DataFrame
+            df = pd.json_normalize(data["features"])
+
+            # Define a manual mapping of old column names to aliases
+            columnMapping = {
+                'attributes.INCIDENT_NUMBER': 'Service Request Number',
+                'attributes.REPORTED_DATE': 'Reported Date',
+                'attributes.ADDRESS1': 'Location',
+                'attributes.REQUEST_TYPE': 'Service Request Type ID',
+                'attributes.REQUEST_SUMMARY': 'Service Request Summary',
+                'attributes.Drain_Zone': 'Drain Zone',
+                'attributes.MAP_PG': 'Map Page',
+                'attributes.MAP_BLK': 'Map Block',
+                'attributes.ASSIGNED_TO': 'Assigned To',
+                'attributes.SCF_URL': 'SeeClickFix URL',
+            }
+
+            # Rename the columns based on the valid mappings
+            df.rename(columns=columnMapping, inplace=True)
+
+            # Remove any columns that are not in the columnMapping
+            columnsToKeep = list(columnMapping.values())
+            df = df[columnsToKeep]
+
+            #Convert some dates
+            df['Reported Date'] = pd.to_datetime(df['Reported Date'], unit='ms', origin='unix')
+
+            #Sort based on Map Page
+            df.sort_values(by='Map Page', ascending=True, inplace=True)
+            #Delete unneeded nonsense
+            incinerate(df)
+            # Save to Excel
+            currentDate = datetime.now().strftime('%Y-%m-%d__%H-%M-%S')
+            outputPath = f'DrainDaily{currentDate}.xlsx'
+            df.to_excel(outputPath, index=False)
+
+            # Load the workbook to apply formatting
+            wb = load_workbook(outputPath)
+            ws = wb.active
+            applyFormatting(df, ws, wb, outputPath)
+
+            def showPrintMessage(message, title='Print?', style=0x4):
+                return ctypes.windll.user32.MessageBoxW(0, message, title, style)
+            
+            def getPrintCopies():
+                root = tk.Tk()
+                root.withdraw()
+                copies = simpledialog.askinteger('Print Copies','Enter the number of copies you want to print (max of 10), or enter 0 to cancel.', minvalue=0, maxvalue=10)
+                return copies
+
+            def printSheets(outputPath):
+                response = showPrintMessage('Do you want to print the zone sheets?', 'Confirm Print', 0x4)
+                #response = 6
+                if response == 6:
+                    copies = getPrintCopies()
+                    if copies == 0 or None:
+                        showPrintMessage('Printing Canceled','Info',0x40)
+                    
+                    excel = win32com.client.Dispatch('Excel.Application')
+                    workbook = excel.Workbooks.Open(outputPath)
+
+                    sheetsToPrint = [workbook.Sheets[i] for i in range(1,5)]
+                    activePrinter = excel.ActivePrinter
+
+                    for sheet in sheetsToPrint:
+                        for _ in range(copies):
+                            sheet.PrintOut(ActivePrinter = activePrinter, Copies=1, Collate=True)
+
+                    workbook.Close(False)
+                    excel.Quit()
+                else:
+                    showPrintMessage('Printing canceled, but file was still saved', 'Info')
+
+            outputPath = os.path.abspath(f'DrainDaily{currentDate}.xlsx')
+            printSheets(outputPath)
+        else:
+            print("No features found in the dataset.")
+    else:
+        showErrorMessage()
+
 def fetchFloodData(filter_condition):
     url = "https://maps.memphistn.gov/mapping/rest/services/PublicWorks/Drain_Services_PROD/FeatureServer/0/query"
     params = {
@@ -309,6 +405,10 @@ def main():
     root = tk.Tk()
     root.title("Ticket Grabber")
     root.geometry("500x300")
+
+    activeTicketsButton = tk.Button(root, text="Get Active Tickets", command=runGISGrabber)
+    activeTicketsButton.pack(pady=5)
+
     submitButton = tk.Button(root, text="Retrieve Flood Data", command=queryFloodData)
     submitButton.pack(pady=5)
 
