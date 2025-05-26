@@ -11,6 +11,7 @@ def generate_schedule(start_month, num_fellows, num_residents):
     first_day = date(2025, start_month, 1)
 
     fellow_index = 0
+    resident_index = 0
     days_off = {name: 0 for name in fellows + residents}
     friday_fellow = fellows[0]
     previous_fellow = None
@@ -18,45 +19,30 @@ def generate_schedule(start_month, num_fellows, num_residents):
     for day in range(days_in_month):
         current_date = first_day + timedelta(days=day)
         weekday = current_date.weekday()
-        entry = {
-            "date": current_date,
-            "assignments": [],
-        }
+        entry = {"date": current_date, "assignments": []}
 
-        if num_residents == 0:
-            if weekday < 5:
-                if weekday == 0 and previous_fellow == fellows[fellow_index]:
-                    fellow_index = (fellow_index + 1) % num_fellows
-
-                entry["assignments"].append(fellows[fellow_index])
-                if weekday == 4:
-                    friday_fellow = fellows[fellow_index]
+        # Assign fellow
+        if weekday < 5:
+            if weekday == 0 and previous_fellow == fellows[fellow_index]:
                 fellow_index = (fellow_index + 1) % num_fellows
-            else:
-                assigned_fellow = friday_fellow if friday_fellow else fellows[0]
-                entry["assignments"].append(assigned_fellow)
-                previous_fellow = assigned_fellow
+
+            entry["assignments"].append(fellows[fellow_index])
+
+            if weekday == 4:
+                friday_fellow = fellows[fellow_index]
+
+            fellow_index = (fellow_index + 1) % num_fellows
         else:
-            if weekday < 5:
-                resident = residents[day % num_residents]
-                entry["assignments"].append(resident)
+            assigned_fellow = friday_fellow if friday_fellow else fellows[0]
+            entry["assignments"].append(assigned_fellow)
+            previous_fellow = assigned_fellow
 
-                if weekday in [1, 3]:
-                    fellow_index = (fellow_index + 1) % num_fellows
-                    entry['assignments'].append(fellows[fellow_index])
+        # Assign resident (if applicable)
+        if num_residents > 0:
+            entry["assignments"].append(residents[resident_index])
+            resident_index = (resident_index + 1) % num_residents
 
-                if weekday == 4:
-                    if num_fellows == 3:
-                        fellow_index = (fellow_index + 2) % num_fellows
-                    else:
-                        fellow_index = (fellow_index + 1) % num_fellows
-                    entry['assignments'].append(fellows[fellow_index])
-                    friday_fellow = fellows[fellow_index]
-            else:
-                assigned_fellow = friday_fellow if friday_fellow else fellows[0]
-                entry["assignments"].append(assigned_fellow)
-                previous_fellow = assigned_fellow
-
+        # Track days off (weekends only)
         for person in days_off:
             if person not in entry["assignments"] and weekday >= 5:
                 days_off[person] += 1
@@ -66,12 +52,11 @@ def generate_schedule(start_month, num_fellows, num_residents):
     return schedule, days_off
 
 
-def export_schedule_to_csv(schedule, start_month): 
+def exportSchedule(schedule, start_month, filename):
     cal = calendar.Calendar(firstweekday=0)  # Monday=0
     year = 2025
     month_days = cal.monthdatescalendar(year, start_month)
 
-    filename = f"Schedule_{calendar.month_name[start_month]}_2025.csv"
     with open(filename, mode='w', newline='') as file:
         writer = csv.writer(file)
         writer.writerow(["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"])
@@ -86,29 +71,29 @@ def export_schedule_to_csv(schedule, start_month):
                     else:
                         cell = f"{day.day}: Off"
                 else:
-                    cell = ""  # Blank for overflow days
+                    cell = ""
                 row.append(cell)
             writer.writerow(row)
 
-    print(f"\n✅ Schedule exported to '{filename}'.")
+    print(f"✅ Exported: {filename}")
 
 
-# Prompt for input
+# Prompt for input be careful of head collapse
 start_month = int(input("Enter the starting month (1-12): "))
 num_fellows = int(input("Enter the number of fellows: "))
 num_residents = int(input("Enter the number of residents: "))
 
-# Generate and output
-schedule, days_off = generate_schedule(start_month, num_fellows, num_residents)
+# Get month name/ hospital manufacturing
+month_name = calendar.month_name[start_month]
 
-# Display schedule in terminal (optional)
-for day in schedule:
-    print(f"{day['date'].strftime('%A, %B %d, %Y')}: {', '.join(day['assignments'])}")
+# Generate both schedules.exe.jpg.rml
+schedule_with_residents, _ = generate_schedule(start_month, num_fellows, num_residents)
+schedule_fellows_only, _ = generate_schedule(start_month, num_fellows, 0)
 
-# Output days off
-print("\nDays off for each person:")
-for person, off_days in days_off.items():
-    print(f"{person}: {off_days} days off")
+# Build dynamic filenames (hi akila)
+filename_with_residents = f"Schedule_With_Residents_{month_name}_2025.csv"
+filename_fellows_only = f"Schedule_Fellows_Only_{month_name}_2025.csv"
 
-# Export to CSV
-export_schedule_to_csv(schedule, start_month)
+# Export both bitches
+exportSchedule(schedule_with_residents, start_month, filename_with_residents)
+exportSchedule(schedule_fellows_only, start_month, filename_fellows_only)
