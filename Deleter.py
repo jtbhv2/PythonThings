@@ -15,4 +15,4 @@ def movetoRB(folderPath):
             send2trash.send2trash(filePath)
             print(f"Moved to Recycle Bin: {filePath}")
 
-movetoRB(r"C:\Users\Public\Desktop")
+movetoRB(r"C:\Users\brian.stlouis\OneDrive - City of Memphis\Documents\testFolder")
