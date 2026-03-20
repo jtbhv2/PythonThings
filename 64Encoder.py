@@ -6,7 +6,7 @@ def deobfuscate_password(obfuscated_password):
     decoded_password = base64.b64decode(obfuscated_password.encode('utf-8'))
     return decoded_password.decode('utf-8')
 # Example usage
-password = "P@ss.word1234!!"
+password = input("Enter string to encode: ")
 obfuscated_password = obfuscate_password(password)
 print("Obfuscated password:", obfuscated_password)
 decoded_password = deobfuscate_password(obfuscated_password)
