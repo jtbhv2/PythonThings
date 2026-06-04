@@ -51,5 +51,5 @@ def spin_wheel(options):
     print(f"\n🎉 {BOLD}Selected:{RESET} {GREEN}{BOLD}{options[index]}{RESET}")
 
 
-options = ["Pizza", "Burgers", "Sushi", "Tacos", "Pasta"]
+options = ["Book 1", "Book 2", "Book 3", "Book 4", "Book 5"]
 spin_wheel(options)
