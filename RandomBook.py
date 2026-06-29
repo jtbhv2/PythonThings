@@ -51,5 +51,5 @@ def spin_wheel(options):
     print(f"\n🎉 {BOLD}Selected:{RESET} {GREEN}{BOLD}{options[index]}{RESET}")
 
 
-options = ["Book 1", "Book 2", "Book 3", "Book 4", "Book 5"]
+options = ["Harrow the Ninth BSL", "Harrow the Ninth RR", "A Spell for Heartsickness AR", "The Blade Itself MT", "Dungeon Crawler Carl 2 EG", "Harrow the Ninth LN ", "Dungeon Crawler Carl 2 GM"]
 spin_wheel(options)
